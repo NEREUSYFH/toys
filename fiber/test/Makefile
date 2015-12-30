@@ -1,6 +1,6 @@
 
 cc=g++
-ccflags=-std=c++11 -DDEBUG -O0 -I../include
+ccflags=-std=c++11 -DDEBUG -O0 -I../include -Wall -Wextra
 ldflags=-lboost_coroutine -lboost_system 
 
 all: test test_fiber

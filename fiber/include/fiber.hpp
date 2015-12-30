@@ -64,42 +64,42 @@ class __fiber_block_base {
     yield_type *__fiber_yield;
     fiber_type __fiber;
 
-    struct _unwind {
-        _unwind(__fiber_block_base& block) noexcept: __block(block) {
-            _set_thread_block(&__block);
+    struct __unwind {
+        __unwind(__fiber_block_base& block) noexcept: __block(block) {
+            __set_thread_block(&__block);
         }
-        ~_unwind() noexcept {
-            __block._on_unwind();
+        ~__unwind() noexcept {
+            __block.__on_unwind();
         }
         __fiber_block_base& __block;
     };
 
-    static inline void _set_thread_block(__fiber_block_base *block) noexcept {
-        _thread_block() = block;
+    static inline void __set_thread_block(__fiber_block_base *block) noexcept {
+        __thread_block() = block;
     }
 
-    static inline __fiber_block_base*& _thread_block() noexcept {
-        static __thread __fiber_block_base* thread_block;
-        return thread_block;
+    static inline __fiber_block_base*& __thread_block() noexcept {
+        static __thread __fiber_block_base* _thread_block;
+        return _thread_block;
     }
 
-    void _set_status(fiber_status status) noexcept { __status = status; }
+    void __set_status(fiber_status status) noexcept { __status = status; }
 
     virtual void _fiber_block_entry() = 0;
 
     __fiber_block_base():
-        __parent_block(_thread_block()),
+        __parent_block(__thread_block()),
         __status(fiber_status::running),
         __fiber_yield(nullptr),
-        __fiber(std::bind(&__fiber_block_base::_routine, this, std::placeholders::_1)) {}
+        __fiber(std::bind(&__fiber_block_base::__routine, this, std::placeholders::_1)) {}
 
     __fiber_block_base(const __fiber_block_base&) = delete;
 
     __fiber_block_base& operator=(const __fiber_block_base&) = delete;
 
-    void _routine(yield_type &yield) {
+    void __routine(yield_type &yield) {
         __fiber_yield = &yield;
-        _unwind __unwind(*this);
+        __unwind _unwind(*this);
 
         //yield from here for complete construct of fiber
         __yield();
@@ -107,22 +107,22 @@ class __fiber_block_base {
         _fiber_block_entry();
     }
 
-    void _on_unwind() noexcept {
-        _set_thread_block(__parent_block);
-        _set_status(fiber_status::dead);
+    void __on_unwind() noexcept {
+        __set_thread_block(__parent_block);
+        __set_status(fiber_status::dead);
     }
 
     void __resume() {
         assert(__status == fiber_status::suspended);
-        _set_thread_block(this);
-        _set_status(fiber_status::running);
+        __set_thread_block(this);
+        __set_status(fiber_status::running);
         __fiber();
     }
 
     void __yield() {
-        assert(__fiber_yield && _thread_block() == this && __status == fiber_status::running);
-        _set_thread_block(__parent_block);
-        _set_status(fiber_status::suspended);
+        assert(__fiber_yield && __thread_block() == this && __status == fiber_status::running);
+        __set_thread_block(__parent_block);
+        __set_status(fiber_status::suspended);
         (*__fiber_yield)();
     }
 
@@ -141,10 +141,10 @@ public:
 
 private:
     template <class Fn>
-    class _fiber_block: public __fiber_block_base {
+    class __fiber_block: public __fiber_block_base {
         Fn __fn;
     public:
-        _fiber_block(Fn&& fn): __fiber_block_base(), __fn(std::forward<Fn>(fn)) {}
+        __fiber_block(Fn&& fn): __fiber_block_base(), __fn(std::forward<Fn>(fn)) {}
 
         void _fiber_block_entry() override {
             //try {
@@ -160,7 +160,7 @@ public:
     fiber(fiber&& f) noexcept { swap(f); }
 
     template <class Fn, class... Args>
-    explicit fiber(Fn&& fn, Args&&... args): __block(_make_shared_block( std::bind(std::forward<Fn>(fn), std::forward<Args>(args)...) )) { 
+    explicit fiber(Fn&& fn, Args&&... args): __block(__make_shared_block( std::bind(std::forward<Fn>(fn), std::forward<Args>(args)...) )) { 
         //now, construct done and resume this fiber
         resume();
     }
@@ -189,8 +189,8 @@ private:
     std::shared_ptr<__fiber_block_base> __block;
 
     template <class Fn>
-    std::shared_ptr<_fiber_block<Fn>> _make_shared_block(Fn&& f) {
-        return std::make_shared<_fiber_block<Fn>>(std::forward<Fn>(f));
+    std::shared_ptr<__fiber_block<Fn>> __make_shared_block(Fn&& f) {
+        return std::make_shared<__fiber_block<Fn>>(std::forward<Fn>(f));
     }
 
 };
@@ -199,7 +199,7 @@ private:
 namespace this_fiber {
 
 inline __fiber_block_base* __this_fiber_block() noexcept {
-    return __fiber_block_base::_thread_block();
+    return __fiber_block_base::__thread_block();
 }
 
 void yield() {
