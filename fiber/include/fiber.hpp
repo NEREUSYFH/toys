@@ -26,6 +26,7 @@ public:
     explicit fiber_error(const std::string& what): std::runtime_error(what) { }
 };
 
+
 enum class fiber_status {
     running,
     suspended,
@@ -48,16 +49,6 @@ std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>&
     return out;
 }
 
-/*
-class __impl_base;
-
-namespace this_fiber { 
-
-__impl_base* __this_fiber_impl() noexcept;
-
-void yield();
-
-}*/
 
 class __fiber_base {
 protected:
@@ -71,6 +62,7 @@ protected:
 public:
     class __this_fiber_helper;
 };
+
 
 class __fiber_base::__impl_base {
     friend class __fiber_base::__this_fiber_helper;
@@ -236,6 +228,7 @@ public:
     void __fiber_routine() override { __fn(); }
 };
 
+
 class __fiber_base::__this_fiber_helper {
     static __fiber_base::__basic_impl* __this_fiber_impl() {
         return reinterpret_cast<__fiber_base::__basic_impl *>(__fiber_base::__impl_base::__thread_impl());
@@ -251,10 +244,11 @@ public:
         assert(impl);
         return impl->__native_handle();
     }
-    static bool __in_fiber() noexcept {
+    static bool __is_fiber() noexcept {
         return static_cast<bool>(__fiber_base::__impl_base::__thread_impl());
     }
 };
+
 
 class fiber: public __fiber_base {
 public:
@@ -323,16 +317,16 @@ std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>&
 
 namespace this_fiber {
 
-void yield() {
+inline void yield() {
     __fiber_base::__this_fiber_helper::__yield();
 }
 
-fiber::id get_id() noexcept {
+inline fiber::id get_id() noexcept {
     return fiber::id(__fiber_base::__this_fiber_helper::__native_handle());
 }
 
-bool in_fiber() noexcept {
-    return __fiber_base::__this_fiber_helper::__in_fiber();
+inline bool is_fiber() noexcept {
+    return __fiber_base::__this_fiber_helper::__is_fiber();
 }
 
 } //this_fiber
