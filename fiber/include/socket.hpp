@@ -62,7 +62,6 @@ private:
         __sockaddr.in.sin_family = AF_INET;
         __sockaddr.in.sin_port = htons(port);
         if (::inet_pton(AF_INET, ip, &__sockaddr.in.sin_addr) != 1) {
-            std::cout << "ip: " << ip << std::endl;
             //throw
             assert(false);
         }
@@ -187,7 +186,7 @@ public:
 
 public:
     //default
-    basic_socket() noexcept: socket_base(-1) { }
+    basic_socket() = default;
 
     //from native handle
     basic_socket(native_handle_type s) noexcept: socket_base(s) { }
@@ -198,7 +197,7 @@ public:
     //copy = delete
     basic_socket(const basic_socket&) = delete;
 
-    virtual ~basic_socket() = default;
+    ~basic_socket() = default;
 
     basic_socket& operator=(const basic_socket&) = delete;
 
@@ -217,7 +216,7 @@ public:
 
     template<class... Args>
     bool bind(Args&&... args) noexcept {
-        return this->bind(socketaddr_type(std::forward<Args>(args)...));
+        return this->bind(static_cast<const socketaddr_type&>(socketaddr_type(std::forward<Args>(args)...)));
     }
 
     bool connect(const socketaddr_type& addr) noexcept { 
@@ -238,9 +237,6 @@ public:
     ssize_t recv(buf_type* buf, size_t len) noexcept {
         return ::recv(this->__socket, buf, len, 0);
     }
-
-
-    /** udp **/
 
     template<class buf_type>
     ssize_t sendto(buf_type *buf, size_t len, const socketaddr_type& addr) noexcept {

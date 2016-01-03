@@ -14,40 +14,13 @@ using std::streamsize;
 using std::ios_base;
 
 
-enum __openmode {
-    __bind = 1 << 0,
-    __connect = 1 << 1,
-    __listen = 1 << 2,
-};
-inline constexpr __openmode operator&(__openmode a, __openmode b){ 
-    return __openmode(static_cast<int>(a) & static_cast<int>(b)); 
-}
-inline constexpr __openmode operator|(__openmode a, __openmode b) { 
-    return __openmode(static_cast<int>(a) | static_cast<int>(b)); 
-}
-inline constexpr __openmode operator^(__openmode a, __openmode b) { 
-    return __openmode(static_cast<int>(a) ^ static_cast<int>(b)); 
-}
-inline constexpr __openmode operator~(__openmode a) { 
-    return __openmode(~static_cast<int>(a)); 
-}
-inline const __openmode& operator|=(__openmode& a, __openmode b){ 
-    return a = a | b; 
-}
-inline const __openmode& operator&=(__openmode& a, __openmode b){ 
-    return a = a & b; 
-}
-inline const __openmode& operator^=(__openmode& a, __openmode b) { 
-    return a = a ^ b; 
-}
-
 class sios_base {
 public:
-    typedef __openmode openmode;
-
-    static const openmode bind = __bind; 
-    static const openmode connect = __connect; 
-    static const openmode listen = __listen; 
+    enum openmode {
+        connect = 1,
+        bind = 2,
+        listen = 3,
+    };
 };
 
 template<class SocketT, class CharT, class Traits = std::char_traits<CharT>> 
@@ -68,26 +41,6 @@ private:
     socket_type __socket;
     char __buf[1];
 
-    bool __connect(const socketaddr_type& addr) {
-        if (!__socket.connect(addr)) {
-            __socket.close();
-            return false;
-        }
-        return true;
-    }
-
-    bool __bind_and_listen(const socketaddr_type& addr, bool listen) {
-        if (!__socket.bind(addr)) {
-            __socket.close();
-            return false;
-        }
-        if (listen && !__socket.listen()) {
-            __socket.close();
-            return false;
-        }
-        return true;
-    }
-
 public:
     //default
     basic_socketbuf(): streambuf_type(), __socket() { }
@@ -100,10 +53,7 @@ public:
 
     //open
     template<class... Args>
-    explicit basic_socketbuf(openmode mode, Args&&... args): streambuf_type(), __socket() { 
-        this->setbuf(__buf, sizeof(__buf));
-        this->open(mode, socketaddr_type(std::forward<Args>(args)...));
-    }
+    explicit basic_socketbuf(openmode mode, Args&&... args): basic_socketbuf(mode, static_cast<const socketaddr_type&>(socketaddr_type(std::forward<Args>(args)...))) { } 
 
     //from socket
     explicit basic_socketbuf(socket_type&& s): streambuf_type(), __socket(std::forward<socket_type>(s)) {
@@ -134,14 +84,25 @@ public:
     }
 
     bool open(openmode mode, const socketaddr_type& addr) noexcept {
-        if (__socket.is_open() || !(mode & (sios_base::connect | sios_base::bind)) || !__socket.open()) {
+        if (__socket.is_open() || !__socket.open()) {
             return false;
         }
-        return (mode & sios_base::connect) ? this->__connect(addr) : this->__bind_and_listen(addr, mode & sios_base::listen); 
+        switch(mode) {
+        case openmode::connect:
+            return __socket.connect(addr) || (__socket.close(), false);
+        case openmode::bind:
+            return __socket.bind(addr) || (__socket.close(), false);
+        case openmode::listen:
+            return __socket.bind_and_listen(addr) || (__socket.close(), false);
+        }
+        __socket.close();
+        return false;
     }
 
-    //template<class... Args>
-    //bool open(openmode mode, Args&&... args) { return this->open(mode, socketaddr_type(std::forward<Args>(args)...)); } 
+    template<class... Args>
+    bool open(openmode mode, Args&&... args) { 
+        return this->open(mode, static_cast<const socketaddr_type&>(socketaddr_type(std::forward<Args>(args)...))); 
+    } 
 
     bool is_open() const noexcept { return __socket.is_open(); }
 
@@ -222,8 +183,6 @@ public:
     typedef SocketT socket_type;
     typedef typename socket_type::socketaddr_type socketaddr_type;
 
-    //typedef typename sios_base::openmode openmode;
-
 private:
     socketbuf_type __socketbuf;
 
@@ -232,28 +191,21 @@ public:
     basic_socketstream(): iostream_type(), __socketbuf() { }
     
     //open
-    basic_socketstream(openmode mode, const socketaddr_type& addr): iostream_type(), __socketbuf(mode, addr) { 
+    basic_socketstream(openmode mode, const socketaddr_type& addr): iostream_type(), __socketbuf() { 
         this->init(&__socketbuf); 
-        if (!__socketbuf.is_open()) {
-            this->setstate(ios_base::failbit);
-        }
+        this->open(mode, addr);
     }
 
     //open
     template<class... Args>
-    explicit basic_socketstream(openmode mode, Args&&... args): iostream_type(), __socketbuf(mode, std::forward<Args>(args)...) {
-        this->init(&__socketbuf); 
-        if (!__socketbuf.is_open()) {
-            this->setstate(ios_base::failbit);
-        }
-    }
+    explicit basic_socketstream(openmode mode, Args&&... args): basic_socketstream(mode, static_cast<const socketaddr_type&>(socketaddr_type(std::forward<Args>(args)...))) { }
 
     //from socket
     explicit basic_socketstream(socket_type&& s): iostream_type(), __socketbuf(std::forward<socket_type>(s)) { 
+        this->init(&__socketbuf); 
         if (!__socketbuf.is_open()) {
             this->setstate(ios_base::failbit);
         }
-        this->init(&__socketbuf); 
     }
 
     //copy = delete
@@ -286,7 +238,7 @@ public:
     }
 
     template<class... Args>
-    bool open(openmode mode, Args&&... args) { return this->open(mode, socketaddr_type(std::forward<Args>(args)...)); } 
+    bool open(openmode mode, Args&&... args) { return this->open(mode, static_cast<const socketaddr_type&>(socketaddr_type(std::forward<Args>(args)...))); } 
 
     bool is_open() const { return __socketbuf.is_open(); }
 

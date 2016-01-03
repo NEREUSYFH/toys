@@ -3,8 +3,6 @@
 #include "socketstream.hpp"
 
 void test_socketstream() {
-    //fiber::socketaddr addr("127.0.0.1", 8888);
-    //fiber::tcpstream ts(addr);
     fiber::tcpstream ts(fiber::tcpstream::connect, "127.0.0.1", 8888);
 
     std::cout << "connect 127.0.0.1" << std::endl;

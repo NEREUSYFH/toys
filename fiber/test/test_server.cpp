@@ -3,10 +3,7 @@
 #include "socketstream.hpp"
 
 void test_socketstream() {
-    //fiber::socketaddr addr(8888);
-    //fiber::tcpacceptor ta(addr);
-    fiber::tcpstream sts(fiber::tcpstream::bind | fiber::tcpstream::listen, 8888);
-
+    fiber::tcpstream sts(fiber::tcpstream::listen, 8888);
     std::cout << "listen fd:" << sts.socket()->native_handle() << std::endl;
 
     while (true) {
