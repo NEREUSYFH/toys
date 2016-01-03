@@ -4,7 +4,9 @@
 #define FIBER_SOCKET_HPP
 
 #include <string>
-#include <iostream>
+//#include <iostream>
+#include <ios>
+#include <cstddef>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -15,7 +17,10 @@
 
 namespace fiber {
 
-class socketaddr {
+class socketaddr_base {
+    static constexpr const char* __inaddr_any_table[] = { "0.0.0.0", "::" };
+    static constexpr const int __native_family_table[] = { AF_INET, AF_INET6 };
+
 public:
     enum class family {
         ipv4 = 0,
@@ -25,55 +30,65 @@ public:
     typedef sockaddr native_sockaddr_type;
     typedef socklen_t native_socklen_type; 
 
-private:
-    family __family;
+protected:
+    static constexpr int __native_family(family f) {
+        return __native_family_table[static_cast<int>(f)];
+    }
+    static constexpr const char* __inaddr_any(family f) {
+        return __inaddr_any_table[static_cast<int>(f)];
+    }
+};
 
+template<socketaddr_base::family Family>
+class basic_socketaddr: public socketaddr_base {
+    static constexpr const native_socklen_type __native_socklen_table[] = { sizeof(sockaddr_in), sizeof(sockaddr_in6) }; 
+    static constexpr native_socklen_type __native_socklen(family f) {
+        return __native_socklen_table[static_cast<int>(f)]; 
+    }
+
+public:
+    static constexpr const int native_family = __native_family(Family);
+    static constexpr const char* inaddr_any = __inaddr_any(Family);
+    static constexpr native_socklen_type native_socklen = __native_socklen(Family); 
+
+private:
     union {
-        sockaddr __s;
-        sockaddr_in __sin;
-        sockaddr_in6 __sin6; 
-    };
+        native_sockaddr_type s;
+        sockaddr_in in;
+        sockaddr_in6 in6; 
+    } __sockaddr;
 
     void __build_ipv4(const char *ip, port_type port) {
-        __sin.sin_family = AF_INET;
-        __sin.sin_port = htons(port);
-        if (::inet_aton(ip, &__sin.sin_addr) != 0) {
+        __sockaddr.in.sin_family = AF_INET;
+        __sockaddr.in.sin_port = htons(port);
+        if (::inet_pton(AF_INET, ip, &__sockaddr.in.sin_addr) != 1) {
+            std::cout << "ip: " << ip << std::endl;
             //throw
+            assert(false);
         }
     }
 
     void __build_ipv6(const char *ip, port_type port) {
-        __sin6.sin6_family = AF_INET6;
-        __sin6.sin6_port = htons(port);
-        if (::inet_pton(AF_INET6, ip, &__sin6) != 0) {
+        __sockaddr.in6.sin6_family = AF_INET6;
+        __sockaddr.in6.sin6_port = htons(port);
+        if (::inet_pton(AF_INET6, ip, &__sockaddr.in6.sin6_addr) != 1) {
             //throw
+            assert(false);
         }
     }
 
 public:
-    native_sockaddr_type *native_sockaddr() const {
-        return const_cast<sockaddr *>(reinterpret_cast<const sockaddr*>(&__s)); 
-    }
+    basic_socketaddr() = default;
 
-    native_socklen_type native_socklen() const {
-        switch (__family) {
-        case family::ipv4:
-            return sizeof(__sin);
-        case family::ipv6:
-            return sizeof(__sin6);
-        }
-        return 0;
-    }
+    //from ip port family
+    explicit basic_socketaddr(const std::string &ip, port_type p): basic_socketaddr(ip.c_str(), p) { }
 
-public:
-    explicit socketaddr(const std::string &ip, port_type p, family f = family::ipv4): socketaddr(ip.c_str(), p, f) { }
+    //from port family
+    explicit basic_socketaddr(port_type p): basic_socketaddr(inaddr_any, p) { }
 
-    explicit socketaddr(port_type p, family f = family::ipv4): socketaddr("0.0.0.0", p, f) { }
-
-    explicit socketaddr(family f = family::ipv4): __family(f), __s() { }
-
-    explicit socketaddr(const char *ip, port_type p, family f = family::ipv4): __family(f), __s() {
-        switch (__family) {
+    //from ip port
+    explicit basic_socketaddr(const char *ip, port_type p): __sockaddr() {
+        switch (Family) {
         case family::ipv4:
             __build_ipv4(ip, p);
             break;
@@ -83,24 +98,40 @@ public:
         }
     }
 
+    //copy
+    basic_socketaddr(const basic_socketaddr& addr): __sockaddr(addr.__sockaddr) {}
+
+    ~basic_socketaddr() = default;
+
+    basic_socketaddr& operator=(const basic_socketaddr& addr) {
+        __sockaddr = addr.__sockaddr;
+        return *this;
+    }
+
+    inline native_sockaddr_type* native_sockaddr() { return &__sockaddr.s; }
+
+    inline const native_sockaddr_type* native_sockaddr() const { return &__sockaddr.s; }
+
     port_type port() const { 
-        switch (__family) {
+        switch (Family) {
         case family::ipv4:
-            return ntohs(__sin.sin_port);
+            return ntohs(__sockaddr.in.sin_port);
         case family::ipv6:
-            return ntohs(__sin6.sin6_port);
+            return ntohs(__sockaddr.in6.sin6_port);
         }
         return 0;
     }
 
-    family get_family() const { return __family; }
-
+public:
+    inline static family get_family() { return Family; }
 };
 
 
 class socket_base {
+    static constexpr const int __native_type_table[] = { SOCK_STREAM, SOCK_DGRAM };
+
 public:
-    typedef socketaddr::family family;
+    typedef socketaddr_base::family family;
     typedef int native_handle_type;
     enum class type {
         tcp = 0,
@@ -108,14 +139,8 @@ public:
     };
 
 protected:
-    static int __native_family(family f) {
-        static const int native_family_table[] = { AF_INET, AF_INET6 };
-        return native_family_table[static_cast<int>(f)];
-    }
-
-    static int __native_type(type t) {
-        static const int native_type_table[] = { SOCK_STREAM, SOCK_DGRAM };
-        return native_type_table[static_cast<int>(t)];
+    static constexpr int __native_type(type t) {
+        return __native_type_table[static_cast<int>(t)];
     }
 
 protected:
@@ -136,133 +161,145 @@ public:
 
     inline bool is_open() const noexcept { return __socket >= 0; }
 
-    native_handle_type native_handle() const noexcept {
-        return __socket;
-    }
+    native_handle_type native_handle() const noexcept { return __socket; }
 
-    void swap(socket_base& s) noexcept {
-        std::swap(s.__socket, __socket);
-    }
+    void swap(socket_base& s) noexcept { std::swap(s.__socket, __socket); }
 
-    bool non_blocking(bool nb = true) const noexcept {
+    bool non_blocking(bool nb = true) noexcept {
         int flags = fcntl(__socket, F_GETFL, 0); 
         if (flags == -1) {
             return false;
         }
-        if (nb) {
-            flags = fcntl(__socket, F_SETFL, flags | O_NONBLOCK);
-        } else {
-            flags = fcntl(__socket, F_SETFL, flags & ~O_NONBLOCK);
-        }
-        return flags != -1;
+        return fcntl(__socket, F_SETFL, nb ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK)) != -1;
     }
 
 };
 
 
-template<socket_base::type Type, socket_base::family Family, class CharT, class Traits = std::char_traits<CharT>>
+template<socket_base::type Type, socket_base::family Family>
 class basic_socket: public socket_base {
-public:
-    typedef CharT char_type;
-    typedef Traits traits_type;
-
-public:
-    basic_socket() noexcept: socket_base(-1) { }
-
-    basic_socket(native_handle_type s) noexcept: socket_base(s) { }
-
-    type get_type() const noexcept { return Type; }
-
-    family get_family() const noexcept { return Family; }
-
-    bool open() noexcept {
-        __socket = ::socket(__native_family(Family), __native_type(Type), 0); 
-        return is_open();
-    }
-
-    bool bind(const socketaddr& addr) noexcept {
-        return this->__open() && this->__bind();
-    }
-
-protected:
-    inline bool __open() noexcept {
-        return !is_open() && open();
-    }
-
-    inline bool __bind(const socketaddr& addr) noexcept {
-        if (::bind(__socket, addr.native_sockaddr(), addr.native_socklen()) != 0) {
-            return false;
-        }
-        return true;
-    }
-};
-
-template<socket_base::family Family, class CharT, class Traits = std::char_traits<CharT>>
-class basic_tcp_socket: public basic_socket<socket_base::type::tcp, Family, CharT, Traits>  { 
-    typedef basic_socket<socket_base::type::tcp, Family, CharT, Traits> basic_socket_type;
-    typedef typename socket_base::native_handle_type native_handle_type;
-    
     static const int __default_backlog = 512;
 
 public:
+    typedef basic_socketaddr<Family> socketaddr_type;
+    static constexpr const int native_family = socketaddr_type::native_family;
+    static constexpr int native_type = __native_type(Type);
+
+public:
     //default
-    basic_tcp_socket() noexcept: basic_socket_type() { }
+    basic_socket() noexcept: socket_base(-1) { }
 
     //from native handle
-    basic_tcp_socket(native_handle_type s) noexcept: basic_socket_type(s) { }
-
-    //copy = delete 
-    basic_tcp_socket(const basic_tcp_socket&) = delete;
+    basic_socket(native_handle_type s) noexcept: socket_base(s) { }
 
     //move
-    basic_tcp_socket(basic_tcp_socket&& ts) noexcept { this->swap(ts); }
-    
-    ~basic_tcp_socket() = default;
+    basic_socket(basic_socket&& s) { this->swap(s); }
 
-    basic_tcp_socket& operator=(const basic_tcp_socket&) = delete;
+    //copy = delete
+    basic_socket(const basic_socket&) = delete;
+
+    virtual ~basic_socket() = default;
+
+    basic_socket& operator=(const basic_socket&) = delete;
+
+    inline type get_type() const noexcept { return Type; }
+
+    inline family get_family() const noexcept { return Family; }
+
+    bool open() noexcept {
+        __socket = ::socket(native_family, native_type, 0); 
+        return is_open();
+    }
+
+    bool bind(const socketaddr_type& addr) noexcept {
+        return ::bind(__socket, addr.native_sockaddr(), addr.native_socklen) == 0;
+    }
+
+    template<class... Args>
+    bool bind(Args&&... args) noexcept {
+        return this->bind(socketaddr_type(std::forward<Args>(args)...));
+    }
+
+    bool connect(const socketaddr_type& addr) noexcept { 
+        return ::connect(this->__socket, addr.native_sockaddr(), addr.native_socklen) == 0;
+    }
+
+    template<class... Args>
+    bool connect(Args&&... args) noexcept {
+        return this->connect(socketaddr_type(std::forward<Args>(args)...));
+    }
+
+    template<class buf_type>
+    ssize_t send(buf_type* buf, size_t len) noexcept {
+        return ::send(this->__socket, buf, len, 0);
+    }
+
+    template<class buf_type>
+    ssize_t recv(buf_type* buf, size_t len) noexcept {
+        return ::recv(this->__socket, buf, len, 0);
+    }
+
+
+    /** udp **/
+
+    template<class buf_type>
+    ssize_t sendto(buf_type *buf, size_t len, const socketaddr_type& addr) noexcept {
+        return ::sendto(buf, len, 0, addr.native_sockaddr(), addr.native_socklen()); 
+    }
+
+    template<class buf_type, class... Args>
+    ssize_t sendto(buf_type *buf, size_t len, Args&&... args) noexcept {
+        return this->sendto(buf, len, socketaddr_type(std::forward<Args>(args)...));
+    }
+
+    template<class buf_type>
+    ssize_t recvfrom(buf_type *buf, size_t len, const socketaddr_type& addr) noexcept {
+        return ::recvfrom(buf, len, 0, addr.native_sockaddr(), addr.native_socklen());
+    }
+
+    template<class buf_type, class... Args>
+    ssize_t recvfrom(buf_type *buf, size_t len, Args&&... args) noexcept {
+        return this->recvfrom(buf, len, socketaddr_type(std::forward<Args>(args)...));
+    }
+
+
+    /** tcp **/
 
     bool listen(int backlog = __default_backlog) noexcept {
-        return this->__open() && this->__listen();
-    }
-
-    bool bind_and_listen(const socketaddr& addr, int backlog = __default_backlog) noexcept {
-        return this->__open() && this->__bind(addr) && this->__listen(backlog);
-    }
-
-    bool connect(const socketaddr& addr) noexcept { 
-        return this->__open() && this->__connect(addr);
-    }
-
-    basic_tcp_socket accept() noexcept {
-        return this->__accept();
-    }
-
-protected:
-    inline bool __listen(int backlog = 5) noexcept { 
         return ::listen(this->__socket, backlog) == 0;
     }
 
-    inline bool __connect(const socketaddr& addr) noexcept {
-        return ::connect(this->__socket, addr.native_sockaddr(), addr.native_socklen()) == 0;
+    bool bind_and_listen(const socketaddr_type& addr, int backlog = __default_backlog) noexcept {
+        return this->bind(addr) && this->listen(backlog);
     }
 
-    inline basic_tcp_socket __accept() noexcept {
-        socketaddr addr(Family);
-        socketaddr::native_socklen_type len = addr.native_socklen();
-        return basic_tcp_socket(::accept(this->__socket, addr.native_sockaddr(), &len));
+    template<class... Args>
+    bool bind_and_listen(Args&&... args, int backlog = __default_backlog) noexcept {
+        return this->bind_and_listen(socketaddr_type(std::forward<Args>(args)...), backlog); 
     }
+
+    basic_socket accept() noexcept {
+        socketaddr_type addr;
+        typename socketaddr_type::native_socklen_type len = addr.native_socklen;
+        native_handle_type s = ::accept(this->__socket, addr.native_sockaddr(), &len);
+        return basic_socket(s);
+    }
+
 };
 
 
-template<class SocketT, class CharT, class Traits> 
-class basic_socketstream;
+//template<class SocketT, class CharT, class Traits> 
+//class basic_socketstream;
 
+/*
 template<class SocketT, class CharT, class Traits = std::char_traits<CharT>>
 class basic_tcpacceptor {
-    typedef basic_socketstream<SocketT, CharT, Traits> basic_socketstream_type;
+    //typedef basic_socketstream<SocketT, CharT, Traits> basic_socketstream_type;
 
 public:
     typedef SocketT socket_type;
+    typedef CharT char_type;
+    typedef Traits traits_type;
 
 private:
     socket_type __socket;
@@ -288,9 +325,9 @@ public:
 
     void swap(basic_tcpacceptor& sa) { __socket.swap(sa.__socket); }
 
-    socket_type& socket() const {
-        return const_cast<socket_type&>(__socket); 
-    }
+    socket_type* socket() { return &__socket; }
+
+    const socket_type* socket() const { return &__socket; }
 
     void bind_and_listen(const socketaddr& addr) {
         if (!__socket.bind_and_listen(addr)) {
@@ -308,18 +345,19 @@ public:
         return basic_socketstream_type(std::move(socket));
     }
 
-};
+};*/
 
+typedef basic_socketaddr<socketaddr_base::family::ipv4> socketaddr;
+typedef basic_socketaddr<socketaddr_base::family::ipv6> socketaddr6;
 
-typedef basic_tcp_socket<socket_base::family::ipv4, char> tcp_socket; 
-typedef basic_tcp_socket<socket_base::family::ipv6, char> tcp6_socket;
+typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv4> tcp_socket; 
+typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv6> tcp6_socket; 
 
-/*
-typedef basic_socket<socket_base::family::ipv4, socket_base::type::udp, char> udp_socket;
-typedef basic_socket<socket_base::family::ipv6, socket_base::type::udp, char> udp6_socket;
-*/
+typedef basic_socket<socket_base::type::udp, socket_base::family::ipv4> udp_socket; 
+typedef basic_socket<socket_base::type::udp, socket_base::family::ipv6> udp6_socket; 
 
-typedef basic_tcpacceptor<tcp_socket, char> tcpacceptor; 
+//typedef basic_tcpacceptor<tcp_socket, char> tcpacceptor; 
+//typedef basic_tcpacceptor<tcp6_socket, char> tcp6acceptor; 
 
 
 

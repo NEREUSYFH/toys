@@ -3,15 +3,16 @@
 #include "socketstream.hpp"
 
 void test_socketstream() {
-    fiber::socketaddr addr(8888);
-    fiber::tcpacceptor ta(addr);
+    //fiber::socketaddr addr(8888);
+    //fiber::tcpacceptor ta(addr);
+    fiber::tcpstream sts(fiber::tcpstream::bind | fiber::tcpstream::listen, 8888);
 
-    std::cout << "listen fd:" << ta.socket().native_handle() << std::endl;
+    std::cout << "listen fd:" << sts.socket()->native_handle() << std::endl;
 
     while (true) {
-        fiber::tcpstream ts = ta.accept();
+        fiber::tcpstream ts = sts.accept();
 
-        std::cout << "accept fd:" << ts.socket().native_handle() << std::endl;
+        std::cout << "accept fd:" << ts.socket()->native_handle() << std::endl;
 
         while (ts.good()) {
             std::string str = "hello";
