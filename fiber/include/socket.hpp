@@ -181,16 +181,15 @@ public:
 
     inline bool is_open() const noexcept { return __socket >= 0; }
 
+    inline operator bool() const noexcept { return is_open(); }
+
     native_handle_type native_handle() const noexcept { return __socket; }
 
     void swap(socket_base& s) noexcept { std::swap(s.__socket, __socket); }
 
     bool nonblocking(bool nonblock = true) noexcept {
         int flags = fcntl(__socket, F_GETFL, 0); 
-        if (flags == -1) {
-            return false;
-        }
-        return fcntl(__socket, F_SETFL, nonblock ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK)) != -1;
+        return flags != -1 && fcntl(__socket, F_SETFL, nonblock ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK)) != -1;
     }
 
 };
@@ -307,74 +306,14 @@ public:
 
 };
 
-
-template<class SocketStreamT>
-class basic_tcpacceptor {
-
-public:
-    typedef SocketStreamT socketstream_type;
-    typedef typename socketstream_type::socket_type socket_type;
-    typedef typename socket_type::socketaddr_type socketaddr_type;
-
-    static const int default_backlog = socket_type::default_backlog;
-
-private:
-    socket_type __socket;
-
-public:
-    //default
-    basic_tcpacceptor() = default;
-
-    //open
-    template<class... Args>
-    explicit basic_tcpacceptor(Args&&... args): __socket() {
-        this->open(std::forward<Args>(args)...);
-    }
-
-    //copy = delete
-    basic_tcpacceptor(const basic_tcpacceptor&) = delete;
-
-    //move
-    basic_tcpacceptor(basic_tcpacceptor&& sa) { this->swap(sa); }
-
-    virtual ~basic_tcpacceptor() = default;
-
-    basic_tcpacceptor& operator=(const basic_tcpacceptor&) = delete;
-
-    void swap(basic_tcpacceptor& sa) { __socket.swap(sa.__socket); }
-
-    template<class... Args>
-    void open(Args&&... args) { 
-        if (!__socket.open() || !__socket.bind(std::forward<Args>(args)...) || !__socket.listen(default_backlog)) {
-            //throw
-            assert(false);
-        }
-    } 
-
-    template<class... Args>
-    socketstream_type accept(Args&&... args) {
-        socket_type socket = __socket.accept(std::forward<Args>(args)...);
-        if (!socket.is_open()) {
-            //throw
-            assert(false);
-        }
-        return socketstream_type(std::move(socket));
-    }
-
-    socket_type* socket() { return &__socket; }
-
-    const socket_type* socket() const { return &__socket; }
-};
-
-
 typedef basic_socketaddr<socketaddr_base::family::ipv4> socketaddr;
 typedef basic_socketaddr<socketaddr_base::family::ipv6> socketaddr6;
 
-typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv4> tcp_socket; 
-typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv6> tcp6_socket; 
+typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv4> tcpsocket; 
+typedef basic_socket<socket_base::type::tcp, socket_base::family::ipv6> tcp6socket; 
 
-typedef basic_socket<socket_base::type::udp, socket_base::family::ipv4> udp_socket; 
-typedef basic_socket<socket_base::type::udp, socket_base::family::ipv6> udp6_socket; 
+typedef basic_socket<socket_base::type::udp, socket_base::family::ipv4> udpsocket; 
+typedef basic_socket<socket_base::type::udp, socket_base::family::ipv6> udp6socket; 
 
 
 }

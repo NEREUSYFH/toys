@@ -278,8 +278,8 @@ public:
     fiber(fiber&& f) noexcept { swap(f); }
 
     template <class Fn, class... Args>
-    explicit fiber(Fn&& fn, Args&&... args): __impl(__make_shared_impl( std::bind(std::forward<Fn>(fn), std::forward<Args>(args)...) )) { 
-    }
+    explicit fiber(Fn&& fn, Args&&... args): 
+        __impl(__make_shared_impl(std::bind(std::forward<Fn>(fn), std::forward<Args>(args)...))) { }
 
     ~fiber() noexcept { } 
 
@@ -287,7 +287,7 @@ public:
 
     fiber& operator=(fiber&& f) noexcept { swap(f); return *this; }
 
-    void swap(fiber &f) noexcept { __impl.swap(f.__impl); } 
+    void swap(fiber& f) noexcept { __impl.swap(f.__impl); } 
 
     void resume() { __impl->__resume(); }
 

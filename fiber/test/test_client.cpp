@@ -4,7 +4,7 @@
 
 void test_socketstream() {
     //fiber::tcpstream ts(fiber::tcpstream::conn | fiber::tcpstream::block, "127.0.0.1", 8888);
-    fiber::tcpstream ts(fiber::tcpstream::conn | fiber::tcpstream::block, fiber::socketaddr("127.0.0.1", 8888));
+    fiber::tcpstream ts(fiber::tcpstream::conn | fiber::tcpstream::block, fiber::socketaddr("127.0.0.1", 8000));
 
     std::cout << "connect 127.0.0.1" << std::endl;
 
